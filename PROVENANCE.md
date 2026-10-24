@@ -65,6 +65,19 @@ gh attestation verify raspberrypi-linux-<commit>-rpi5-*.btf.zst \
 
 ## Install on a Pi (Cilium)
 
+Prefer the host installer (defaults to upstream releases until this fork
+catches up):
+
+```sh
+# current default — broad history
+BTF_RELEASE_REPO=javierhonduco/raspberrypi-kernel-btf ./scripts/install-btf.sh
+
+# later — your provenanced builds
+BTF_RELEASE_REPO=roberteggl/raspberrypi-kernel-btf ./scripts/install-btf.sh
+```
+
+Or manually:
+
 ```sh
 KVER="$(uname -r)"   # e.g. 6.18.39+rpt-rpi-2712
 zstd -d raspberrypi-linux-*-rpi5-*.btf.zst -o "/boot/vmlinux-${KVER}"
@@ -72,9 +85,8 @@ chmod 644 "/boot/vmlinux-${KVER}"
 ```
 
 Mount host `/boot` into the Cilium agent (`extraHostPathMounts`). The filename
-**must** match `uname -r`. After a Pi kernel `apt` upgrade, fetch a matching
-release (or rebuild) — the old blob will not apply.
-
+**must** match `uname -r`. After a Pi kernel `apt` upgrade, the systemd
+timer/boot unit re-fetches; if no matching release exists, `btf-guard` fails.
 ## Matching caveats
 
 Blobs are built from `bcm2711_defconfig` / `bcm2712_defconfig`, not the tuned

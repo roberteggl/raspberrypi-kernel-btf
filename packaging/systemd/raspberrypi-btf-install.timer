@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly refresh of detached Raspberry Pi kernel BTF blob
+Documentation=https://github.com/roberteggl/raspberrypi-kernel-btf
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

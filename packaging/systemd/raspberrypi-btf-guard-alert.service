@@ -1,0 +1,8 @@
+[Unit]
+Description=Alert: missing Raspberry Pi kernel BTF blob
+Documentation=https://github.com/roberteggl/raspberrypi-kernel-btf
+
+[Service]
+Type=oneshot
+# Prefer a local log line; wire to ntfy/Gotify/etc. via drop-in if desired.
+ExecStart=/bin/sh -c 'logger -t raspberrypi-btf -p daemon.err "missing /boot/vmlinux-$(uname -r) — Cilium >=1.20.2 will fail on this node"'

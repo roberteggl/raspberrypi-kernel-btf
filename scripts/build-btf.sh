@@ -31,6 +31,7 @@ esac
 
 repo_url="${KERNEL_REPO_URL:-https://github.com/raspberrypi/linux}"
 branch="${KERNEL_BRANCH:-}"
+commit_pin="${KERNEL_COMMIT:-}"
 workdir="${WORKDIR:-$PWD/work}"
 linux_dir="${LINUX_DIR:-$workdir/linux}"
 build_root="${BUILD_ROOT:-$workdir/build}"
@@ -43,12 +44,20 @@ skip_build="${SKIP_BUILD:-0}"
 mkdir -p "$workdir" "$build_dir" "$out_dir"
 
 if [[ ! -d "$linux_dir/.git" ]]; then
-    clone_args=(clone --depth=1)
-    if [[ -n "$branch" ]]; then
-        clone_args+=(--branch "$branch")
+    if [[ -n "$commit_pin" ]]; then
+        # Exact commit (matches a shipped Pi OS kernel package).
+        git init "$linux_dir"
+        git -C "$linux_dir" remote add origin "$repo_url"
+        git -C "$linux_dir" fetch --depth=1 origin "$commit_pin"
+        git -C "$linux_dir" checkout --detach FETCH_HEAD
+    else
+        clone_args=(clone --depth=1)
+        if [[ -n "$branch" ]]; then
+            clone_args+=(--branch "$branch")
+        fi
+        clone_args+=("$repo_url" "$linux_dir")
+        git "${clone_args[@]}"
     fi
-    clone_args+=("$repo_url" "$linux_dir")
-    git "${clone_args[@]}"
 fi
 
 cd "$linux_dir"

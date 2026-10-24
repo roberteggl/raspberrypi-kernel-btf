@@ -1,0 +1,12 @@
+[Unit]
+Description=Check detached Raspberry Pi kernel BTF blob is present
+Documentation=https://github.com/roberteggl/raspberrypi-kernel-btf
+After=local-fs.target raspberrypi-btf-install.service
+OnFailure=raspberrypi-btf-guard-alert.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/raspberrypi-btf/btf-guard.sh
+
+[Install]
+WantedBy=multi-user.target

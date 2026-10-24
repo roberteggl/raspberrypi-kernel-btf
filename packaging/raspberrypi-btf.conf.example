@@ -1,0 +1,12 @@
+# /etc/raspberrypi-btf.conf
+#
+# Default: upstream daily builder (broader release history).
+BTF_RELEASE_REPO=javierhonduco/raspberrypi-kernel-btf
+#
+# When your fork has matching releases for the kernels you run, switch to:
+# BTF_RELEASE_REPO=roberteggl/raspberrypi-kernel-btf
+#
+# Optional overrides:
+# BTF_TARGET=rpi5
+# BTF_DEST_DIR=/boot
+# BTF_VERIFY=1

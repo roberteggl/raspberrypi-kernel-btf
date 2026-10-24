@@ -1,0 +1,19 @@
+[Unit]
+Description=Install detached Raspberry Pi kernel BTF blob for running kernel
+Documentation=https://github.com/roberteggl/raspberrypi-kernel-btf
+After=network-online.target
+Wants=network-online.target
+# Do not block boot if GitHub is unreachable; guard unit will still fail loudly.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+Environment=BTF_RELEASE_REPO=javierhonduco/raspberrypi-kernel-btf
+# Switch later:
+# Environment=BTF_RELEASE_REPO=roberteggl/raspberrypi-kernel-btf
+EnvironmentFile=-/etc/raspberrypi-btf.conf
+ExecStart=/usr/local/lib/raspberrypi-btf/install-btf.sh
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
