@@ -129,8 +129,15 @@ sha_file="$out_dir/${artifact_base}.sha256"
 llvm-objcopy --dump-section .BTF="$btf_file" "$vmlinux"
 zstd -f --rm -19 "$btf_file" -o "$btf_zst_file"
 
+flake_lock_sha256="${FLAKE_LOCK_SHA256:-}"
+if [[ -z "$flake_lock_sha256" && -f "${FLAKE_LOCK_PATH:-$PWD/flake.lock}" ]]; then
+    flake_lock_sha256="$(sha256sum "${FLAKE_LOCK_PATH:-$PWD/flake.lock}" | awk '{print $1}')"
+elif [[ -z "$flake_lock_sha256" && -f "$OLDPWD/flake.lock" ]]; then
+    flake_lock_sha256="$(sha256sum "$OLDPWD/flake.lock" | awk '{print $1}')"
+fi
+
 jq -n \
-    --arg schema_version "1" \
+    --arg schema_version "2" \
     --arg target "$target" \
     --arg model "$model" \
     --arg arch "$ARCH" \
@@ -144,6 +151,12 @@ jq -n \
     --arg btf_file "$(basename "$btf_zst_file")" \
     --arg btf_sha256 "$(sha256sum "$btf_zst_file" | awk '{print $1}')" \
     --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg builder_repository "${BUILDER_REPOSITORY:-}" \
+    --arg builder_workflow "${BUILDER_WORKFLOW:-}" \
+    --arg builder_run_id "${BUILDER_RUN_ID:-}" \
+    --arg builder_run_url "${BUILDER_RUN_URL:-}" \
+    --arg builder_sha "${BUILDER_SHA:-}" \
+    --arg flake_lock_sha256 "$flake_lock_sha256" \
     '{
       schema_version: $schema_version,
       target: $target,
@@ -166,6 +179,14 @@ jq -n \
         arch: $arch,
         llvm: true,
         built_at: $built_at
+      },
+      builder: {
+        repository: $builder_repository,
+        workflow: $builder_workflow,
+        run_id: $builder_run_id,
+        run_url: $builder_run_url,
+        git_sha: $builder_sha,
+        flake_lock_sha256: $flake_lock_sha256
       }
     }' > "$metadata_file"
 

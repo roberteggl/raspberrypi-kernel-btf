@@ -1,0 +1,7 @@
+# Primary maintainer
+* @roberteggl
+
+/.github/workflows/ @roberteggl
+/scripts/ @roberteggl
+/flake.nix @roberteggl
+/flake.lock @roberteggl
