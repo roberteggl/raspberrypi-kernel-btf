@@ -53,9 +53,9 @@ echo "dest=${dest}"
 # Example: raspberrypi-linux-8307cc8d4cf8-rpi5-6.18.39-v8-16k+.btf.zst
 # gh --jq does not support --arg; pipe JSON to system jq instead.
 mapfile -t matches < <(
-  gh api --paginate "repos/${BTF_RELEASE_REPO}/releases" \
+  gh api --paginate --slurp "repos/${BTF_RELEASE_REPO}/releases" \
     | jq -r --arg t "$BTF_TARGET" --arg v "$kernel_ver" '
-      .[] | . as $rel | .assets[]
+      .[] | .[] | . as $rel | .assets[]
       | select(.name | test("-" + $t + "-" + $v + "-") and endswith(".btf.zst"))
       | [$rel.tag_name, .name, .browser_download_url]
       | @tsv
