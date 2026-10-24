@@ -4,6 +4,8 @@
 # Default source is the upstream daily builder (has history for older kernels).
 # Flip BTF_RELEASE_REPO to roberteggl/raspberrypi-kernel-btf when that fork
 # has a matching release for your uname -r.
+#
+# Uses the public GitHub REST API via curl (no gh auth required for public repos).
 set -euo pipefail
 
 BTF_RELEASE_REPO="${BTF_RELEASE_REPO:-javierhonduco/raspberrypi-kernel-btf}"
@@ -13,6 +15,7 @@ BTF_WORKDIR="${BTF_WORKDIR:-$(mktemp -d)}"
 BTF_KEEP_WORKDIR="${BTF_KEEP_WORKDIR:-0}"
 BTF_VERIFY="${BTF_VERIFY:-1}"
 DRY_RUN="${DRY_RUN:-0}"
+GITHUB_API="${GITHUB_API:-https://api.github.com}"
 
 cleanup() {
   if [[ "$BTF_KEEP_WORKDIR" != "1" ]]; then
@@ -24,7 +27,7 @@ trap cleanup EXIT
 die() { echo "error: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
 
-need gh
+need curl
 need zstd
 need jq
 need sha256sum
@@ -49,18 +52,38 @@ echo "kernel_ver=${kernel_ver}"
 echo "target=${BTF_TARGET}"
 echo "dest=${dest}"
 
-# Find newest release asset whose name embeds this kernel version + target.
-# Example: raspberrypi-linux-8307cc8d4cf8-rpi5-6.18.39-v8-16k+.btf.zst
-# gh --jq does not support --arg; pipe JSON to system jq instead.
-mapfile -t matches < <(
-  gh api --paginate --slurp "repos/${BTF_RELEASE_REPO}/releases" \
-    | jq -r --arg t "$BTF_TARGET" --arg v "$kernel_ver" '
-      .[] | .[] | . as $rel | .assets[]
-      | select(.name | test("-" + $t + "-" + $v + "-") and endswith(".btf.zst"))
-      | [$rel.tag_name, .name, .browser_download_url]
-      | @tsv
-    '
-)
+curl_api() {
+  local url="$1"
+  local args=(-fsSL -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+  if [[ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
+    args+=(-H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}")
+  fi
+  curl "${args[@]}" "$url"
+}
+
+# Collect release pages until we find a match or run out (cap pages).
+matches_file="$(mktemp)"
+page=1
+found=0
+while [[ $page -le 10 ]]; do
+  json="$(curl_api "${GITHUB_API}/repos/${BTF_RELEASE_REPO}/releases?per_page=30&page=${page}")"
+  count="$(jq 'length' <<<"$json")"
+  [[ "$count" -gt 0 ]] || break
+  jq -r --arg t "$BTF_TARGET" --arg v "$kernel_ver" '
+    .[] | . as $rel | .assets[]
+    | select(.name | test("-" + $t + "-" + $v + "-") and endswith(".btf.zst"))
+    | [$rel.tag_name, .name, .browser_download_url]
+    | @tsv
+  ' <<<"$json" >>"$matches_file"
+  if [[ -s "$matches_file" ]]; then
+    found=1
+    break
+  fi
+  page=$((page + 1))
+done
+
+mapfile -t matches <"$matches_file"
+rm -f "$matches_file"
 
 if [[ ${#matches[@]} -eq 0 ]]; then
   die "no ${BTF_TARGET} BTF asset for kernel ${kernel_ver} in ${BTF_RELEASE_REPO}
@@ -68,7 +91,6 @@ hint: hold the kernel package, or wait for a matching release, then retry.
       switch repo with: BTF_RELEASE_REPO=roberteggl/raspberrypi-kernel-btf $0"
 fi
 
-# First match from API is newest release first.
 IFS=$'\t' read -r tag asset_name asset_url <<<"${matches[0]}"
 echo "selected tag=${tag} asset=${asset_name}"
 
@@ -76,17 +98,16 @@ stem="${asset_name%.btf.zst}"
 mkdir -p "$BTF_WORKDIR"
 cd "$BTF_WORKDIR"
 
-gh release download "$tag" -R "$BTF_RELEASE_REPO" \
-  -p "${stem}.btf.zst" \
-  -p "${stem}.sha256" \
-  -p "${stem}.metadata.json" \
-  -p "${stem}.btf.zst.sigstore.json" \
-  2>/dev/null || gh release download "$tag" -R "$BTF_RELEASE_REPO" \
-  -p "${stem}.btf.zst" \
-  -p "${stem}.sha256" \
-  -p "${stem}.metadata.json"
+download() {
+  local name="$1"
+  local url="https://github.com/${BTF_RELEASE_REPO}/releases/download/${tag}/${name}"
+  curl -fsSL -o "$name" "$url" || return 1
+}
 
-[[ -f "${stem}.btf.zst" ]] || die "download failed for ${stem}.btf.zst"
+download "${stem}.btf.zst" || die "download failed for ${stem}.btf.zst"
+download "${stem}.sha256" || die "download failed for ${stem}.sha256"
+download "${stem}.metadata.json" || true
+download "${stem}.btf.zst.sigstore.json" || true
 
 if [[ "$BTF_VERIFY" == "1" ]]; then
   echo "==> verify sha256"
@@ -96,11 +117,6 @@ if [[ "$BTF_VERIFY" == "1" ]]; then
     actual="$(sha256sum "${stem}.btf.zst" | awk '{print $1}')"
     [[ "$expected" == "$actual" ]] || die "metadata sha256 mismatch"
     echo "metadata OK (schema $(jq -r '.schema_version' "${stem}.metadata.json"))"
-  fi
-  # Prefer fork verify script when present and cosign/gh attestation available
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ -x "${script_dir}/verify-release.sh" && -f "${stem}.btf.zst.sigstore.json" ]]; then
-    VERIFY_REPO="$BTF_RELEASE_REPO" "${script_dir}/verify-release.sh" "${stem}.btf.zst" || true
   fi
 fi
 
